@@ -17,7 +17,10 @@ import {
 
 const KEY = 'test-key';
 
-type Handler = (url: URL, init: { method?: string; headers: Record<string, string | string[] | undefined> }) => unknown;
+type Handler = (
+  url: URL,
+  init: { method?: string; headers: Record<string, string | string[] | undefined>; body?: any },
+) => unknown;
 
 class ApiError {
   constructor(readonly status: number, readonly body: unknown = {}) {}
@@ -43,12 +46,13 @@ before(async () => {
   server = createServer((request, response) => {
     const url = new URL(request.url!, 'http://localhost');
     calls.push(url);
-    request.resume();
+    let raw = '';
+    request.on('data', chunk => (raw += chunk));
     request.on('end', () => {
       let status = 200;
       let body: unknown;
       try {
-        body = handler(url, { method: request.method, headers: request.headers });
+        body = handler(url, { method: request.method, headers: request.headers, body: raw ? JSON.parse(raw) : undefined });
       } catch (error) {
         status = 500;
         body = { detail: String(error) };
@@ -255,6 +259,44 @@ test('answer unwraps the JSON result', async () => {
   mockApi(() => ({ id: 'a', answer, json_content: answer, result: { json_content: answer, sources: ['https://a.com'] }, sources: ['https://a.com'] }));
   const result = await run(createOlostepAnswerTool(opts()), { task: 'Capital of Japan?' });
   assert.equal(result.answer, 'Tokyo');
+});
+
+test('an invalid API key is reported as a 401 with the API message, without the key', async () => {
+  mockApi(() => new ApiError(401, { message: 'Your API key is invalid.' }));
+  await assert.rejects(run(createOlostepScrapeTool(opts({ apiKey: 'olostep_secret_value' })), { url: 'https://a.com' }), error => {
+    assert.match(String(error), /HTTP 401\): Your API key is invalid/);
+    assert.doesNotMatch(String(error), /blacklisted|olostep_secret/);
+    return true;
+  });
+});
+
+test('map asks for 100 URLs unless topN is given', async () => {
+  const bodies: any[] = [];
+  mockApi((url, init) => {
+    if (url.pathname.endsWith('/maps')) bodies.push(init.body);
+    return { id: 'm', urls: ['https://a.com'] };
+  });
+  await run(createOlostepMapTool(opts()), { url: 'https://a.com' });
+  await run(createOlostepMapTool(opts()), { url: 'https://a.com', topN: 500 });
+  assert.deepEqual(bodies.map(body => body.top_n), [100, 500]);
+});
+
+test('a finished job with no pages explains why it is empty', async () => {
+  mockApi(url => (url.pathname.endsWith('/pages') ? { pages: [], cursor: null } : { status: 'completed' }));
+  const result = await run(createOlostepResultsTool(opts()), { id: 'crawl_1' });
+  assert.deepEqual(result.pages, []);
+  assert.match(result.message, /returned no pages/);
+});
+
+test('requests identify the integration in the User-Agent', async () => {
+  const agents: string[] = [];
+  mockApi((url, init) => {
+    agents.push(String(init.headers['user-agent']));
+    return url.pathname.endsWith('/items') ? { items: [], cursor: null } : { status: 'completed' };
+  });
+  await run(createOlostepResultsTool(opts()), { id: 'batch_1' });
+  assert.ok(agents.length >= 2);
+  for (const agent of agents) assert.match(agent, /^olostep-mastra-tools\//);
 });
 
 test('the tools register on a Mastra agent', async () => {

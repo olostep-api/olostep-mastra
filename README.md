@@ -59,7 +59,7 @@ The tools also work in Mastra workflows and anywhere Mastra accepts a tool.
 | `createOlostepScrapeTool` | `olostep-scrape` | Scrape a URL and return clean markdown (JavaScript rendering included) |
 | `createOlostepSearchTool` | `olostep-search` | Search the live web and return titles, URLs and descriptions (1 to 25 results) |
 | `createOlostepAnswerTool` | `olostep-answer` | Answer a question from the live web, with source URLs |
-| `createOlostepMapTool` | `olostep-map` | List the URLs on a website, optionally ranked by a query |
+| `createOlostepMapTool` | `olostep-map` | List the URLs on a website, optionally ranked by a query (100 by default, up to 100k) |
 | `createOlostepCrawlTool` | `olostep-crawl` | Crawl a site and return the markdown of each page, 20 at a time by default |
 | `createOlostepBatchTool` | `olostep-batch` | Scrape up to 100k URLs per batch and return the markdown of each page, 20 at a time by default |
 | `createOlostepResultsTool` | `olostep-results` | Get the remaining pages of a crawl or batch |
